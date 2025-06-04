@@ -1,0 +1,23 @@
+{
+    "projectId": "26",
+    "projectName": "Demo Proje 26",
+    "description": "Bu bir örnek projedir",
+    "lastUpdated": "2024-03-20",
+    "features": [
+        {
+            "id": 1,
+            "name": "Özellik 1",
+            "status": "active"
+        },
+        {
+            "id": 2,
+            "name": "Özellik 2",
+            "status": "pending"
+        }
+    ],
+    "settings": {
+        "theme": "dark",
+        "language": "tr",
+        "notifications": true
+    }
+} 

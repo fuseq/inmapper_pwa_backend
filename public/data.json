@@ -1,0 +1,22 @@
+[
+  {
+    "stand": "Stand 1",
+    "count": 5
+  },
+  {
+    "stand": "Stand 2",
+    "count": 15
+  },
+  {
+    "stand": "Stand 3",
+    "count": 7
+  },
+  {
+    "stand": "Stand 4",
+    "count": 20
+  },
+  {
+    "stand": "Stand 5",
+    "count": 5
+  }
+]

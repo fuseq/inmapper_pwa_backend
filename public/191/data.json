@@ -1,0 +1,28 @@
+{
+    "projectId": "191",
+    "projectName": "Demo Proje 191",
+    "description": "Bu başka bir örnek projedir",
+    "lastUpdated": "2024-03-20",
+    "features": [
+        {
+            "id": 1,
+            "name": "Ana Özellik",
+            "status": "active"
+        },
+        {
+            "id": 2,
+            "name": "Yardımcı Özellik",
+            "status": "active"
+        },
+        {
+            "id": 3,
+            "name": "Ek Özellik",
+            "status": "development"
+        }
+    ],
+    "settings": {
+        "theme": "light",
+        "language": "en",
+        "notifications": false
+    }
+} 
