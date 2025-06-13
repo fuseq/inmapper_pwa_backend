@@ -8,127 +8,102 @@ app.use(cors());
 app.use(express.static('public')); // Statik dosyalar için
 app.use(express.json()); // JSON body parsing için
 
-// Proje versiyonlarını tutacak obje
-const projectVersions = {};
-
-// Proje klasörlerini kontrol et ve versiyon bilgilerini yükle
-function initializeProjectVersions() {
-    const publicPath = path.join(__dirname, 'public');
-    const dirs = fs.readdirSync(publicPath);
-    
-    dirs.forEach(dir => {
-        const dirPath = path.join(publicPath, dir);
-        if (fs.statSync(dirPath).isDirectory() && /^\d+$/.test(dir)) {
-            // Eğer versiyon dosyası varsa oku, yoksa varsayılan versiyon ata
-            const versionPath = path.join(dirPath, 'version.txt');
-            if (fs.existsSync(versionPath)) {
-                projectVersions[dir] = fs.readFileSync(versionPath, 'utf8').trim();
-            } else {
-                projectVersions[dir] = '1.0.0';
-                fs.writeFileSync(versionPath, '1.0.0');
-            }
+// Versiyon bilgisini yükle
+function loadVersion() {
+    const versionPath = path.join(__dirname, 'public', 'version.json');
+    try {
+        if (fs.existsSync(versionPath)) {
+            return JSON.parse(fs.readFileSync(versionPath, 'utf8'));
         }
-    });
+    } catch (error) {
+        console.error('Versiyon dosyası yüklenemedi:', error);
+    }
+    return { version: '1.0.0', lastUpdated: new Date().toISOString().split('T')[0] };
 }
 
-// Başlangıçta projeleri yükle
-initializeProjectVersions();
-
-// Proje listesini döndüren endpoint
-app.get("/projects", (req, res) => {
-    const publicPath = path.join(__dirname, 'public');
+// Versiyon bilgisini kaydet
+function saveVersion(versionInfo) {
+    const versionPath = path.join(__dirname, 'public', 'version.json');
     try {
-        const dirs = fs.readdirSync(publicPath);
-        const projects = dirs
-            .filter(dir => fs.statSync(path.join(publicPath, dir)).isDirectory() && /^\d+$/.test(dir))
-            .map(dir => ({
-                id: dir,
-                version: projectVersions[dir] || '1.0.0'
-            }));
-        res.json(projects);
+        fs.writeFileSync(versionPath, JSON.stringify(versionInfo, null, 2));
     } catch (error) {
-        res.status(500).json({ error: 'Proje listesi alınamadı' });
+        console.error('Versiyon dosyası kaydedilemedi:', error);
     }
-});
+}
 
-// Belirli bir projenin içeriğini döndüren endpoint
-app.get("/content/:projectId", (req, res) => {
-    const projectId = req.params.projectId;
-    const projectPath = path.join(__dirname, 'public', projectId);
-    const dataPath = path.join(projectPath, 'data.json');
-
-    if (!fs.existsSync(projectPath)) {
-        return res.status(404).json({ error: 'Proje bulunamadı' });
-    }
-
-    try {
-        let data = {};
-        if (fs.existsSync(dataPath)) {
-            data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-        }
-
-        res.json({
-            version: projectVersions[projectId] || '1.0.0',
-            data: data
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Proje içeriği alınamadı' });
-    }
-});
+let currentVersion = loadVersion();
 
 // Versiyon bilgisini döndüren endpoint
-app.get("/version/:projectId", (req, res) => {
-    const projectId = req.params.projectId;
-    if (!projectVersions[projectId]) {
-        return res.status(404).json({ error: 'Proje bulunamadı' });
-    }
-    res.json({ version: projectVersions[projectId] });
-});
-
-// Manuel versiyon güncelleme endpoint'i
-app.post("/manual-update/:projectId", (req, res) => {
-    const projectId = req.params.projectId;
-    const projectPath = path.join(__dirname, 'public', projectId);
-    
-    if (!fs.existsSync(projectPath)) {
-        return res.status(404).json({ error: 'Proje bulunamadı' });
-    }
-
-    const newVersion = `1.0.${Math.floor(Math.random() * 100)}`;
-    projectVersions[projectId] = newVersion;
-    
-    // Versiyon bilgisini dosyaya kaydet
-    const versionPath = path.join(projectPath, 'version.txt');
-    fs.writeFileSync(versionPath, newVersion);
-    
-    console.log(`Proje ${projectId} için yeni versiyon manuel olarak güncellendi: ${newVersion}`);
-    res.json({ success: true, version: newVersion });
+app.get("/version", (req, res) => {
+    res.json(currentVersion);
 });
 
 // Versiyon güncelleme endpoint'i
-app.post("/update-version/:projectId", (req, res) => {
-    const projectId = req.params.projectId;
-    const projectPath = path.join(__dirname, 'public', projectId);
+app.post("/update-version", (req, res) => {
+    const version = currentVersion.version.split('.');
+    const newPatch = parseInt(version[2] || '0') + 1;
+    const newVersion = `${version[0]}.${version[1]}.${newPatch}`;
     
-    if (!fs.existsSync(projectPath)) {
-        return res.status(404).json({ error: 'Proje bulunamadı' });
-    }
+    currentVersion = {
+        version: newVersion,
+        lastUpdated: new Date().toISOString().split('T')[0]
+    };
+    
+    saveVersion(currentVersion);
+    
+    console.log(`Yeni versiyon: ${newVersion}`);
+    res.json(currentVersion);
+});
 
-    const newVersion = `1.0.${Math.floor(Math.random() * 100)}`;
-    projectVersions[projectId] = newVersion;
+// Dosya listesini döndüren endpoint
+app.get("/files", (req, res) => {
+    const publicPath = path.join(__dirname, 'public');
     
-    // Versiyon bilgisini dosyaya kaydet
-    const versionPath = path.join(projectPath, 'version.txt');
-    fs.writeFileSync(versionPath, newVersion);
-    
-    console.log(`Proje ${projectId} için yeni versiyon: ${newVersion}`);
-    res.json({ success: true, version: newVersion });
+    try {
+        // Recursive olarak tüm dosyaları bul
+        function getFiles(dir) {
+            const files = fs.readdirSync(dir);
+            let fileList = [];
+            
+            files.forEach(file => {
+                const filePath = path.join(dir, file);
+                const stat = fs.statSync(filePath);
+                const relativePath = path.relative(publicPath, filePath);
+                
+                if (stat.isDirectory()) {
+                    // Alt klasörleri de tara
+                    fileList = fileList.concat(getFiles(filePath));
+                } else {
+                    // version.json dosyasını hariç tut
+                    if (file !== 'version.json') {
+                        fileList.push({
+                            name: file,
+                            path: relativePath.replace(/\\/g, '/'),
+                            size: stat.size,
+                            lastModified: stat.mtime,
+                            type: path.extname(file).substring(1)
+                        });
+                    }
+                }
+            });
+            
+            return fileList;
+        }
+
+        const files = getFiles(publicPath);
+        res.json({
+            ...currentVersion,
+            files: files
+        });
+    } catch (error) {
+        console.error('Dosya listesi alınamadı:', error);
+        res.status(500).json({ error: 'Dosya listesi alınamadı' });
+    }
 });
 
 // Dosya indirme endpoint'i
-app.get("/download/:filename(*)", (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(__dirname, 'public', filename);
+app.get("/download/*", (req, res) => {
+    const filePath = path.join(__dirname, 'public', req.params[0]);
 
     // Dosyanın varlığını kontrol et
     if (!fs.existsSync(filePath)) {
@@ -139,7 +114,7 @@ app.get("/download/:filename(*)", (req, res) => {
         // Dosya bilgilerini al
         const stat = fs.statSync(filePath);
         const fileSize = stat.size;
-        const extension = path.extname(filename).toLowerCase();
+        const extension = path.extname(filePath).toLowerCase();
 
         // Content-Type belirleme
         const mimeTypes = {
@@ -160,11 +135,20 @@ app.get("/download/:filename(*)", (req, res) => {
         };
 
         const contentType = mimeTypes[extension] || 'application/octet-stream';
+        
+        // Cache kontrolü için headers
+        res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 yıl
+        res.setHeader('ETag', `"${currentVersion.version}"`);
+        
+        // Client'ın gönderdiği ETag ile karşılaştır
+        const clientETag = req.headers['if-none-match'];
+        if (clientETag === `"${currentVersion.version}"`) {
+            return res.status(304).end(); // Not Modified
+        }
 
         // Response headers
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', fileSize);
-        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filename)}"`);
         
         // Dosyayı stream olarak gönder
         const fileStream = fs.createReadStream(filePath);
@@ -172,50 +156,6 @@ app.get("/download/:filename(*)", (req, res) => {
     } catch (error) {
         console.error('Dosya indirme hatası:', error);
         res.status(500).json({ error: 'Dosya indirilemedi' });
-    }
-});
-
-// Public klasöründeki dosyaları listeleyen endpoint
-app.get("/files", (req, res) => {
-    const publicPath = path.join(__dirname, 'public');
-    
-    try {
-        // Recursive olarak tüm dosyaları bul
-        function getFiles(dir) {
-            const files = fs.readdirSync(dir);
-            let fileList = [];
-            
-            files.forEach(file => {
-                const filePath = path.join(dir, file);
-                const stat = fs.statSync(filePath);
-                const relativePath = path.relative(publicPath, filePath);
-                
-                if (stat.isDirectory()) {
-                    // Alt klasörleri de tara
-                    fileList = fileList.concat(getFiles(filePath));
-                } else {
-                    // Dosya bilgilerini ekle
-                    fileList.push({
-                        name: file,
-                        path: relativePath.replace(/\\/g, '/'),
-                        size: stat.size,
-                        lastModified: stat.mtime,
-                        type: path.extname(file).substring(1)
-                    });
-                }
-            });
-            
-            return fileList;
-        }
-
-        const files = getFiles(publicPath);
-        res.json({
-            version: projectVersions['default'] || '1.0.0',
-            files: files
-        });
-    } catch (error) {
-        console.error('Dosya listesi alınamadı:', error);
-        res.status(500).json({ error: 'Dosya listesi alınamadı' });
     }
 });
 
